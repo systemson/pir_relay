@@ -3,6 +3,7 @@
 #include <ArduinoMqttClient.h>
 #include "defines.h"
 #include "helpers.h"
+#include "autoupdate.h"
 
 int current = 0;
 unsigned long previousMillis = 0;
@@ -49,6 +50,7 @@ void loop()
     digitalWrite(D6_PIN, LOW);
     println("Maintenance Mode.");
     delay(getEnv(LOOP_TIME).toInt());
+    doUpdate();
   }
   else if (getEnv(SYS_ACTION) == "ON")
   {

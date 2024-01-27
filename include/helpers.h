@@ -84,6 +84,8 @@ JSONVar buildHeartbeat(const boolean &IsOnline = true)
   json["is_online"] = IsOnline;
   json["running_since"] = millis();
   json["current_command"] = getEnv(SYS_ACTION);
+  json["board"] = BOARD_NAME;
+  json["firmware_version"] = FIRMWARE_VERSION;
 
   return json;
 }
@@ -148,7 +150,7 @@ void connectMqtt()
 {
   // You can provide a unique client ID, if not set the library uses Arduino-millis()
   // Each client must have a unique client ID
-  mqttClient.setId(getEnv(MAC_ADDRESS));
+  // mqttClient.setId(getEnv(MAC_ADDRESS));
 
   // set a will message, used by the broker when the connection dies unexpectedly
   // you must know the size of the message beforehand, and it must be set before connecting
@@ -170,9 +172,8 @@ void connectMqtt()
   {
     Serial.print("MQTT connection failed! Error code = ");
     Serial.println(mqttClient.connectError());
-
-    while (1)
-      ;
+    delay(3000);
+    ESP.restart();
   }
 
   Serial.println("You're connected to the MQTT broker!");
@@ -294,6 +295,7 @@ void boot()
   }
 
   connectWiFi();
+  delay(3000);
 
   connectMqtt();
 
