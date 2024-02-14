@@ -1,14 +1,17 @@
+
 #include <ArduinoMqttClient.h>
 #include <Arduino_JSON.h>
 #include <ESP8266WiFi.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <ESP8266httpUpdate.h>
 #include <WebSerial.h>
 #include "defines.h"
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 AsyncWebServer server(80);
+int current = 0;
 
 String CONFIG[CONFIG_SIZE];
 
@@ -24,13 +27,6 @@ String getEnv(const int &key)
 
 void onMqttMessage(int messageSize)
 {
-  // we received a message, print out the topic and contents
-  // Serial.println("Received a message on topic '");
-  // Serial.print(mqttClient.messageTopic());
-  // Serial.print("', length ");
-  // Serial.print(messageSize);
-  // Serial.println(" bytes:");
-
   String message = "";
 
   while (mqttClient.available())
@@ -80,7 +76,7 @@ JSONVar buildHeartbeat(const boolean &IsOnline = true)
 
   json["mac_address"] = getEnv(MAC_ADDRESS);
   json["ip_address"] = getEnv(IP_ADDRESS);
-  json["group"] = getEnv(SYS_GROUP);
+  json["group_name"] = getEnv(SYS_GROUP);
   json["is_online"] = IsOnline;
   json["running_since"] = millis();
   json["current_command"] = getEnv(SYS_ACTION);
@@ -90,6 +86,28 @@ JSONVar buildHeartbeat(const boolean &IsOnline = true)
   return json;
 }
 
+void registerComponent(String type, String description)
+{
+  JSONVar json;
+
+  json["mac_address"] = getEnv(MAC_ADDRESS);
+  json["component_type"] = type;
+  json["description"] = description;
+
+  // send message, the Print interface can be used to set the message contents
+  mqttClient.beginMessage(getEnv(MQTT_REG_TOPIC).c_str());
+  mqttClient.print(JSON.stringify(json));
+  mqttClient.endMessage();
+}
+
+void sendHeartBeat()
+{
+  // send message, the Print interface can be used to set the message contents
+  mqttClient.beginMessage(getEnv(MQTT_PUB_TOPIC).c_str());
+  mqttClient.print(JSON.stringify(buildHeartbeat()));
+  mqttClient.endMessage();
+}
+
 void hardReset()
 {
   setEnv(SYS_MAINTENANCE, "FALSE");
@@ -97,20 +115,24 @@ void hardReset()
   setEnv(SYS_ACTION, "FREE");
   setEnv(SYS_HARD_RESET, "FALSE");
 
-  setEnv(WIFI_SSID, "Amilcar2.4G");
-  setEnv(WIFI_PASS, "Gigi.2022");
+  // setEnv(WIFI_SSID, "Amilcar2.4G");
+  // setEnv(WIFI_PASS, "Gigi.2022");
+
+  setEnv(WIFI_SSID, "Deivi");
+  setEnv(WIFI_PASS, "Amilcar.1");
   setEnv(MAC_ADDRESS, WiFi.macAddress());
 
-  setEnv(MQTT_BROKER, "192.168.1.11");
+  // setEnv(MQTT_BROKER, "192.168.1.11");
+  setEnv(MQTT_BROKER, "192.168.69.42");
   setEnv(MQTT_PORT, "1883");
   setEnv(MQTT_PUB_TOPIC, "arduino/heartbeat");
   setEnv(MQTT_SUB_TOPIC, "arduino/" + getEnv(SYS_GROUP) + "/" + getEnv(MAC_ADDRESS) + "/read");
   setEnv(MQTT_CONF_TOPIC, "arduino/" + getEnv(SYS_GROUP) + "/" + getEnv(MAC_ADDRESS) + "/response");
+  setEnv(MQTT_REG_TOPIC, "arduino/component/register");
+  setEnv(MQTT_READ_TOPIC, "arduino/component/reading");
 
   setEnv(MAX_DELAY, "10000");
   setEnv(LOOP_TIME, "1000");
-  setEnv(FORCED_ON, "FALSE");
-  setEnv(SYS_HARD_RESET, "FALSE");
 }
 
 void connectWiFi()
@@ -295,12 +317,128 @@ void boot()
   }
 
   connectWiFi();
-  delay(3000);
 
   connectMqtt();
 
   setRoutes();
-
-  pinMode(D7_PIN, INPUT);
-  pinMode(D6_PIN, OUTPUT);
 }
+void tryUpdate()
+{
+  // The line below is optional. It can be used to blink the LED on the board during flashing
+  // The LED will be on during download of one buffer of data from the network. The LED will
+  // be off during writing that buffer to flash
+  // On a good connection the LED should flash regularly. On a bad connection the LED will be
+  // on much longer than it will be off. Other pins than LED_BUILTIN may be used. The second
+  // value is used to put the LED on. If the LED is on with HIGH, that value should be passed
+  ESPhttpUpdate.setLedPin(LED_BUILTIN, LOW);
+
+  // Add optional callback notifiers
+  // ESPhttpUpdate.onStart(update_started);
+  // ESPhttpUpdate.onEnd(update_finished);
+  // ESPhttpUpdate.onProgress(update_progress);
+  // ESPhttpUpdate.onError(update_error);
+
+  t_httpUpdate_return ret = ESPhttpUpdate.update(wifiClient, getEnv(UPDATE_URL), FIRMWARE_VERSION);
+  // Or:
+  // t_httpUpdate_return ret = ESPhttpUpdate.update(client, "server", 80, "file.bin");
+
+  switch (ret)
+  {
+  case HTTP_UPDATE_FAILED:
+    Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+    setEnv(SYS_ACTION, "FREE");
+    break;
+
+  case HTTP_UPDATE_NO_UPDATES:
+    Serial.println("Your code is up to date!");
+    delay(LOOP_TIME);
+    setEnv(SYS_ACTION, "FREE");
+    break;
+
+  case HTTP_UPDATE_OK:
+    Serial.println("HTTP_UPDATE_OK");
+    delay(LOOP_TIME); // Wait a second and restart
+    setEnv(SYS_ACTION, "FREE");
+    ESP.restart();
+    break;
+  }
+}
+
+
+
+void loopHeartBeat()
+{
+  if (!mqttClient.connected())
+  {
+    setEnv(SYS_ACTION, "FREE");
+
+    if (!mqttClient.connect(getEnv(MQTT_BROKER).c_str(), getEnv(MQTT_PORT).toInt()))
+    {
+      print("MQTT connection failed! Error code = ");
+      println(mqttClient.connectError());
+    }
+    else
+    {
+      // subscribe to a topic
+      mqttClient.subscribe(getEnv(MQTT_SUB_TOPIC));
+    }
+  }
+
+  // call poll() regularly to allow the library to receive MQTT messages and
+  // send MQTT keep alive which avoids being disconnected by the broker
+  mqttClient.poll();
+
+  sendHeartBeat();
+}
+
+void mainLoop()
+{
+  const int loopTime = getEnv(LOOP_TIME).toInt();
+  const String sysAction = getEnv(SYS_ACTION);
+
+  if (sysAction == "WAIT")
+  {
+    digitalWrite(D6, LOW);
+    println("Maintenance Mode.");
+    tryUpdate();
+  }
+  else if (sysAction == "ON")
+  {
+    digitalWrite(D6, HIGH);
+    println("User Power-On.");
+  }
+  else if (sysAction == "OFF")
+  {
+    digitalWrite(D6, LOW);
+    println("User Power-Off.");
+  }
+  else if (current == 0 && digitalRead(D7) == LOW)
+  {
+    digitalWrite(D6, LOW);
+  }
+  else if (digitalRead(D7) == HIGH)
+  {
+    println("Motion detected.");
+    digitalWrite(D6, HIGH);
+    current = getEnv(MAX_DELAY).toInt();
+  }
+  else
+  {
+    current -= loopTime;
+  }
+}
+unsigned long noDelayLoop(unsigned long previousMillis, unsigned long loopTime, void (*callback)(void))
+{
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - previousMillis >= loopTime)
+  {
+    // save the last time a message was sent
+    previousMillis = currentMillis;
+
+    callback();
+  }
+
+  return previousMillis;
+}
+

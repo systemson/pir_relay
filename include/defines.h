@@ -3,7 +3,7 @@
 #define SYS_MAINTENANCE 0
 #define SYS_GROUP 1
 #define NONE_2 2
-#define SYS_DESC 3
+#define NONE_3 3
 #define SYS_ACTION 4
 #define SYS_HARD_RESET 5
 
@@ -20,30 +20,19 @@
 #define MQTT_PUB_TOPIC 15
 #define MQTT_SUB_TOPIC 16
 #define MQTT_CONF_TOPIC 17
-
-#define NONE_18 18
-#define NONE_19 19
+#define MQTT_REG_TOPIC 18
+#define MQTT_READ_TOPIC 19
 
 #define MAX_DELAY 20
 #define LOOP_TIME 21
-#define FORCED_ON 22
+#define NONE_22 22
 #define NONE_23 23
 #define UPDATE_URL 24
 
 #define CONFIG_SIZE 25
-#define FIRMWARE_VERSION "0.0.1"
+
+#define FIRMWARE_VERSION "0.0.4"
 #define BOARD_NAME "nodemcuv2"
-
-#define D0_PIN 16
-#define D1_PIN 5
-#define D2_PIN 4
-#define D3_PIN 0
-#define D4_PIN 2
-
-#define D5_PIN 14
-#define D6_PIN 12
-#define D7_PIN 13
-#define D8_PIN 15
 
 #define RX_PIN 3
 #define TX_PIN 1
