@@ -7,12 +7,15 @@
 #include <ESP8266httpUpdate.h>
 #include <WebSerial.h>
 #include "defines.h"
+// #include "implement.h"
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 AsyncWebServer server(80);
 
 String CONFIG[CONFIG_SIZE];
+
+void turnOff();
 
 void setEnv(const int &key, const String &value)
 {
@@ -391,6 +394,7 @@ void tryUpdate()
 
 void loopHeartBeat()
 {
+
   if (!mqttClient.connected())
   {
     setEnv(SYS_ACTION, "FREE");
@@ -405,6 +409,13 @@ void loopHeartBeat()
       // subscribe to a topic
       mqttClient.subscribe(getEnv(MQTT_SUB_TOPIC));
     }
+  }
+
+  if (getEnv(SYS_ACTION) == "WAIT")
+  {
+    println("Maintenance Mode.");
+    turnOff();
+    tryUpdate();
   }
 
   // call poll() regularly to allow the library to receive MQTT messages and

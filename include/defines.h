@@ -23,20 +23,14 @@
 #define MQTT_REG_TOPIC 18
 #define MQTT_READ_TOPIC 19
 
-#define MAX_DELAY 20
-#define LOOP_TIME 21
+#define LOOP_TIME 20
+#define NONE_21 21
 #define NONE_22 22
 #define NONE_23 23
 #define UPDATE_URL 24
 
 #define CONFIG_SIZE 25
 
-#define FIRMWARE_VERSION "PIR_0.0.4"
+#define FIRMWARE_VERSION "0.0.4"
+#define FIRMWARE_TYPE "PIR"
 #define BOARD_NAME "nodemcuv2"
-#define BOARD_TYPE "PIR"
-
-#define RX_PIN 3
-#define TX_PIN 1
-
-#define S2_PIN 9
-#define S3_PIN 10

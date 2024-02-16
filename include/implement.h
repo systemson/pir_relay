@@ -9,13 +9,14 @@ void mainLoop()
   const int loopTime = getEnv(LOOP_TIME).toInt();
   const String sysAction = getEnv(SYS_ACTION);
 
-  if (sysAction == "WAIT")
-  {
-    digitalWrite(D6, LOW);
-    println("Maintenance Mode.");
-    tryUpdate();
-  }
-  else if (sysAction == "ON")
+  // if (sysAction == "WAIT")
+  // {
+  //   turnOff();
+  //   println("Maintenance Mode.");
+  //   tryUpdate();
+  // }
+  // else
+  if (sysAction == "ON")
   {
     digitalWrite(D6, HIGH);
     println("User Power-On.");
@@ -33,10 +34,17 @@ void mainLoop()
   {
     println("Motion detected.");
     digitalWrite(D6, HIGH);
-    current = getEnv(MAX_DELAY).toInt();
+    current = loopTime * 60 * 10;
   }
   else
   {
     current -= loopTime;
   }
+}
+
+void turnOff()
+{
+  setEnv(SYS_ACTION, "FREE");
+  digitalWrite(D6, LOW);
+  delay(getEnv(LOOP_TIME).toInt());
 }
