@@ -1,4 +1,4 @@
-
+#pragma once
 #include <ArduinoMqttClient.h>
 #include <Arduino_JSON.h>
 #include <ESP8266WiFi.h>
@@ -11,7 +11,6 @@
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 AsyncWebServer server(80);
-int current = 0;
 
 String CONFIG[CONFIG_SIZE];
 
@@ -23,6 +22,39 @@ void setEnv(const int &key, const String &value)
 String getEnv(const int &key)
 {
   return CONFIG[key];
+}
+
+void print(String msg)
+{
+  Serial.print(msg);
+  WebSerial.print(msg);
+}
+
+void print(int msg)
+{
+  Serial.print(msg);
+  WebSerial.print(msg);
+}
+
+void println(String msg)
+{
+  Serial.println(msg);
+  WebSerial.println(msg);
+}
+
+void println(int msg)
+{
+  Serial.println(msg);
+  WebSerial.println(msg);
+}
+
+int readSensor()
+{
+  digitalWrite(D2, HIGH);
+  delay(10);
+  const int val = analogRead(A0);
+  digitalWrite(D2, LOW);
+  return val;
 }
 
 void onMqttMessage(int messageSize)
@@ -91,11 +123,27 @@ void registerComponent(String type, String description)
   JSONVar json;
 
   json["mac_address"] = getEnv(MAC_ADDRESS);
-  json["component_type"] = type;
+  json["component_name"] = type;
   json["description"] = description;
 
   // send message, the Print interface can be used to set the message contents
   mqttClient.beginMessage(getEnv(MQTT_REG_TOPIC).c_str());
+  mqttClient.print(JSON.stringify(json));
+  mqttClient.endMessage();
+}
+
+void sendReading(String type, String description, String value, String status)
+{
+  JSONVar json;
+
+  json["mac_address"] = getEnv(MAC_ADDRESS);
+  json["component_name"] = type;
+  json["description"] = description;
+  json["value"] = value;
+  json["status"] = status;
+
+  // send message, the Print interface can be used to set the message contents
+  mqttClient.beginMessage(getEnv(MQTT_READ_TOPIC).c_str());
   mqttClient.print(JSON.stringify(json));
   mqttClient.endMessage();
 }
@@ -107,7 +155,6 @@ void sendHeartBeat()
   mqttClient.print(JSON.stringify(buildHeartbeat()));
   mqttClient.endMessage();
 }
-
 void hardReset()
 {
   setEnv(SYS_MAINTENANCE, "FALSE");
@@ -123,15 +170,14 @@ void hardReset()
   setEnv(MAC_ADDRESS, WiFi.macAddress());
 
   // setEnv(MQTT_BROKER, "192.168.1.11");
-  setEnv(MQTT_BROKER, "192.168.69.42");
+  setEnv(MQTT_BROKER, "192.168.15.42");
   setEnv(MQTT_PORT, "1883");
   setEnv(MQTT_PUB_TOPIC, "arduino/heartbeat");
-  setEnv(MQTT_SUB_TOPIC, "arduino/" + getEnv(SYS_GROUP) + "/" + getEnv(MAC_ADDRESS) + "/read");
-  setEnv(MQTT_CONF_TOPIC, "arduino/" + getEnv(SYS_GROUP) + "/" + getEnv(MAC_ADDRESS) + "/response");
+  setEnv(MQTT_SUB_TOPIC, "arduino/" + getEnv(SYS_GROUP) + "/" + getEnv(MAC_ADDRESS) + "/inbox");
+  setEnv(MQTT_CONF_TOPIC, "arduino/" + getEnv(SYS_GROUP) + "/" + getEnv(MAC_ADDRESS) + "/outbox");
   setEnv(MQTT_REG_TOPIC, "arduino/component/register");
   setEnv(MQTT_READ_TOPIC, "arduino/component/reading");
 
-  setEnv(MAX_DELAY, "10000");
   setEnv(LOOP_TIME, "1000");
 }
 
@@ -280,35 +326,14 @@ void setRoutes()
   // WebSerial.msgCallback(recvMsg);
   server.begin();
 }
-
-void print(String msg)
-{
-  Serial.print(msg);
-  WebSerial.print(msg);
-}
-
-void print(int msg)
-{
-  Serial.print(msg);
-  WebSerial.print(msg);
-}
-
-void println(String msg)
-{
-  Serial.println(msg);
-  WebSerial.println(msg);
-}
-
-void println(int msg)
-{
-  Serial.println(msg);
-  WebSerial.println(msg);
-}
-
 void boot()
 {
   Serial.println("");
   Serial.println("Starting NodeMCU v1.0 Rev3");
+  Serial.print(BOARD_NAME);
+  Serial.print(" | ");
+  Serial.println(FIRMWARE_VERSION);
+  Serial.println("");
 
   if (getEnv(SYS_HARD_RESET) != "FALSE")
   {
@@ -364,8 +389,6 @@ void tryUpdate()
   }
 }
 
-
-
 void loopHeartBeat()
 {
   if (!mqttClient.connected())
@@ -391,54 +414,22 @@ void loopHeartBeat()
   sendHeartBeat();
 }
 
-void mainLoop()
-{
-  const int loopTime = getEnv(LOOP_TIME).toInt();
-  const String sysAction = getEnv(SYS_ACTION);
+unsigned long noDelayCounter[] = {};
 
-  if (sysAction == "WAIT")
-  {
-    digitalWrite(D6, LOW);
-    println("Maintenance Mode.");
-    tryUpdate();
-  }
-  else if (sysAction == "ON")
-  {
-    digitalWrite(D6, HIGH);
-    println("User Power-On.");
-  }
-  else if (sysAction == "OFF")
-  {
-    digitalWrite(D6, LOW);
-    println("User Power-Off.");
-  }
-  else if (current == 0 && digitalRead(D7) == LOW)
-  {
-    digitalWrite(D6, LOW);
-  }
-  else if (digitalRead(D7) == HIGH)
-  {
-    println("Motion detected.");
-    digitalWrite(D6, HIGH);
-    current = getEnv(MAX_DELAY).toInt();
-  }
-  else
-  {
-    current -= loopTime;
-  }
-}
-unsigned long noDelayLoop(unsigned long previousMillis, unsigned long loopTime, void (*callback)(void))
+void noDelayLoop(int loopNum, unsigned long loopTime, void (*callback)(void))
 {
+  if (!noDelayCounter[loopNum])
+  {
+    noDelayCounter[loopNum] = 0;
+  }
+
+  unsigned long previousMillis = noDelayCounter[loopNum];
+
   unsigned long currentMillis = millis();
 
   if (currentMillis - previousMillis >= loopTime)
   {
-    // save the last time a message was sent
-    previousMillis = currentMillis;
-
     callback();
+    noDelayCounter[loopNum] = currentMillis;
   }
-
-  return previousMillis;
 }
-

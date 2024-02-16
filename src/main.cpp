@@ -1,8 +1,6 @@
-#include <ESP8266WiFi.h>
-#include <Arduino_JSON.h>
-#include <ArduinoMqttClient.h>
-#include "defines.h"
+#include <Arduino.h>
 #include "helpers.h"
+#include "implement.h"
 
 unsigned long previousMillis = 0;
 
@@ -25,8 +23,7 @@ void setup()
 void loop()
 {
   const int loopTime = getEnv(LOOP_TIME).toInt();
-  const String sysAction = getEnv(SYS_ACTION);
-  
-  noDelayLoop(previousMillis, loopTime, mainLoop);
-  previousMillis = noDelayLoop(previousMillis, loopTime, loopHeartBeat);
+
+  noDelayLoop(0, loopTime, &mainLoop);
+  noDelayLoop(1, loopTime * 10, &loopHeartBeat);
 }

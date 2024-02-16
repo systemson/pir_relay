@@ -31,8 +31,9 @@
 
 #define CONFIG_SIZE 25
 
-#define FIRMWARE_VERSION "0.0.4"
+#define FIRMWARE_VERSION "PIR_0.0.4"
 #define BOARD_NAME "nodemcuv2"
+#define BOARD_TYPE "PIR"
 
 #define RX_PIN 3
 #define TX_PIN 1
