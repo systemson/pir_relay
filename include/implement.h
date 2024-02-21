@@ -42,6 +42,13 @@ void mainLoop()
   }
 }
 
+void turnOn()
+{
+  registerComponent("HC-SR501", "LIVING ROOM");
+  pinMode(D7, INPUT);
+  pinMode(D6, OUTPUT);
+}
+
 void turnOff()
 {
   setEnv(SYS_ACTION, "FREE");

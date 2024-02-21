@@ -15,9 +15,7 @@ void setup()
   boot();
 
   sendHeartBeat();
-  registerComponent("HC-SR501", "LIVING ROOM");
-  pinMode(D7, INPUT);
-  pinMode(D6, OUTPUT);
+  turnOn();
 }
 
 void loop()

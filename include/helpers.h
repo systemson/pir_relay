@@ -7,7 +7,7 @@
 #include <ESP8266httpUpdate.h>
 #include <WebSerial.h>
 #include "defines.h"
-// #include "implement.h"
+#include "homepage.h"
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
@@ -51,12 +51,12 @@ void println(int msg)
   WebSerial.println(msg);
 }
 
-int readSensor()
+int readSensor(uint8_t sensor)
 {
-  digitalWrite(D2, HIGH);
+  digitalWrite(sensor, HIGH);
   delay(10);
   const int val = analogRead(A0);
-  digitalWrite(D2, LOW);
+  digitalWrite(sensor, LOW);
   return val;
 }
 
@@ -72,18 +72,18 @@ void onMqttMessage(int messageSize)
   JSONVar json = JSON.parse(message);
   const String command = (String)json["command"];
 
-  Serial.print("Received command: ");
+  Serial.print(F("Received command: "));
   Serial.println(command);
 
   if (command == "SET")
   {
     const int key = (int)json["key"];
     const String value = (String)json["value"];
-    Serial.print("Setting [");
+    Serial.print(F("Setting ["));
     Serial.print(key);
-    Serial.print(":");
+    Serial.print(F(":"));
     Serial.print(value);
-    Serial.println("]");
+    Serial.println(F("]"));
     setEnv(key, value);
   }
   else if (command == "GET")
@@ -160,7 +160,7 @@ void sendHeartBeat()
 }
 void hardReset()
 {
-  setEnv(SYS_MAINTENANCE, "FALSE");
+  // setEnv(SYS_MAINTENANCE, "FALSE");
   setEnv(SYS_GROUP, "dpena");
   setEnv(SYS_ACTION, "FREE");
   setEnv(SYS_HARD_RESET, "FALSE");
@@ -184,19 +184,29 @@ void hardReset()
   setEnv(LOOP_TIME, "1000");
 }
 
-void connectWiFi()
+boolean connectWiFi(boolean accessPoint = false)
 {
+  WiFi.mode(WIFI_AP_STA);
+
+  // Start Access Point
+  WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
+  Serial.print(F("Access Point name: "));
+  Serial.println(WIFI_AP_SSID);
+
+  // Print the Access Point IP address
+  const String apIP = WiFi.softAPIP().toString();
+  Serial.print(F("Access Point IP address: "));
+  Serial.println(apIP);
+
   // Connect to WiFi
   WiFi.begin(getEnv(WIFI_SSID), getEnv(WIFI_PASS));
-
-  WiFi.mode(WIFI_STA);
 
   // while wifi not connected yet, print '.'
   // then after it connected, get out of the loop
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(100);
-    Serial.print(".");
+    Serial.print(F("."));
   }
 
   // The ESP8266 tries to reconnect automatically when the connection is lost
@@ -204,17 +214,19 @@ void connectWiFi()
   WiFi.persistent(true);
 
   // print a new line, then print WiFi connected and the IP address
-  Serial.println("");
-  Serial.println("WiFi connected");
+  Serial.println();
+  Serial.println(F("WiFi connected"));
 
-  // Print the IP address
-  const String ipAddress = WiFi.localIP().toString();
-  Serial.print("Network IP address: ");
-  Serial.println(ipAddress);
-  setEnv(IP_ADDRESS, ipAddress);
+  // Print the Local IP address
+  const String localIP = WiFi.localIP().toString();
+  Serial.print(F("Local IP address: "));
+  Serial.println(localIP);
+  setEnv(IP_ADDRESS, localIP);
 
   // print("Connection RSSI: ");
   // println(WiFi.RSSI().toString());
+
+  return accessPoint;
 }
 
 void connectMqtt()
@@ -234,28 +246,28 @@ void connectMqtt()
   // You can provide a username and password for authentication
   // mqttClient.setUsernamePassword("username", "password");
 
-  Serial.print("Attempting to connect to the MQTT broker: ");
+  Serial.print(F("Attempting to connect to the MQTT broker: "));
   Serial.print(getEnv(MQTT_BROKER));
-  Serial.print(":");
+  Serial.print(F(":"));
   Serial.println(getEnv(MQTT_PORT));
 
   if (!mqttClient.connect(getEnv(MQTT_BROKER).c_str(), getEnv(MQTT_PORT).toInt()))
   {
-    Serial.print("MQTT connection failed! Error code = ");
+    Serial.print(F("MQTT connection failed! Error code = "));
     Serial.println(mqttClient.connectError());
     delay(3000);
     ESP.restart();
   }
 
-  Serial.println("You're connected to the MQTT broker!");
-  Serial.println("");
+  Serial.println(F("You're connected to the MQTT broker!"));
+  Serial.println();
 
   // set the message receive callback
   mqttClient.onMessage(onMqttMessage);
 
-  Serial.print("Subscribing to topic: ");
+  Serial.print(F("Subscribing to topic: "));
   Serial.println(getEnv(MQTT_SUB_TOPIC));
-  Serial.println("");
+  Serial.println();
 
   // subscribe to a topic
   mqttClient.subscribe(getEnv(MQTT_SUB_TOPIC));
@@ -268,7 +280,7 @@ void notFound(AsyncWebServerRequest *request)
 
 void homeRoute(AsyncWebServerRequest *request)
 {
-  request->send(200, "application/json", "{\"message\":\"Running\"}");
+  request->send(200, "text/html", INDEX_HTML);
 }
 void infoRoute(AsyncWebServerRequest *request)
 {
@@ -313,42 +325,59 @@ void setConfigRoute(AsyncWebServerRequest *request)
   request->send(200, "application/json", JSON.stringify(response));
 }
 
+const char index_html[] PROGMEM = R"rawliteral(
+    <!DOCTYPE HTML><html><head>
+      <title>ESP Input Form</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      </head><body>
+      <form action="/get">
+        input1: <input type="text" name="input1">
+        <input type="submit" value="Submit">
+      </form><br>
+      <form action="/get">
+        input2: <input type="text" name="input2">
+        <input type="submit" value="Submit">
+      </form><br>
+      <form action="/get">
+        input3: <input type="text" name="input3">
+        <input type="submit" value="Submit">
+      </form>
+    </body></html>)rawliteral";
+
 void setRoutes()
 {
-  server.onNotFound(notFound);
-
-  server.on("/", HTTP_GET, homeRoute);
-
-  server.on("/info", HTTP_GET, infoRoute);
-
-  server.on("/config", HTTP_GET, getConfigRoute);
-
-  server.on("/config", HTTP_POST, setConfigRoute);
-
   WebSerial.begin(&server);
   // WebSerial.msgCallback(recvMsg);
+
+  server.onNotFound(notFound);
+
+  server.on("/config", HTTP_GET, getConfigRoute);
+  server.on("/config", HTTP_POST, setConfigRoute);
+  server.on("/", HTTP_GET, homeRoute);
+  server.on("/info", HTTP_GET, infoRoute);
+
   server.begin();
 }
 void boot()
 {
-  Serial.println("");
-  Serial.println("Starting NodeMCU v1.0 Rev3");
-  Serial.print(BOARD_NAME);
-  Serial.print(" | ");
-  Serial.println(FIRMWARE_VERSION);
-  Serial.println("");
+  Serial.println();
+  Serial.println(F("Starting NodeMCU v1.0 Rev3"));
+  Serial.print(F(BOARD_NAME));
+  Serial.print(F(" | "));
+  Serial.println(F(FIRMWARE_VERSION));
+  Serial.println();
 
   if (getEnv(SYS_HARD_RESET) != "FALSE")
   {
-    Serial.println("Restoring factory defaults");
+    Serial.println(F("Restoring factory defaults."));
     hardReset();
   }
+
+  setRoutes();
 
   connectWiFi();
 
   connectMqtt();
-
-  setRoutes();
 }
 void tryUpdate()
 {
@@ -378,13 +407,13 @@ void tryUpdate()
     break;
 
   case HTTP_UPDATE_NO_UPDATES:
-    Serial.println("Your code is up to date!");
+    Serial.println(F("Your code is up to date!"));
     delay(LOOP_TIME);
     setEnv(SYS_ACTION, "FREE");
     break;
 
   case HTTP_UPDATE_OK:
-    Serial.println("HTTP_UPDATE_OK");
+    Serial.println(F("HTTP_UPDATE_OK"));
     delay(LOOP_TIME); // Wait a second and restart
     setEnv(SYS_ACTION, "FREE");
     ESP.restart();
@@ -425,7 +454,7 @@ void loopHeartBeat()
   sendHeartBeat();
 }
 
-unsigned long noDelayCounter[] = {};
+unsigned long noDelayCounter[3] = {};
 
 void noDelayLoop(int loopNum, unsigned long loopTime, void (*callback)(void))
 {

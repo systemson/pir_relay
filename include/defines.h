@@ -1,7 +1,7 @@
 // A (pseudo) integer key, in the form of #define which is handled
 // by the preprocessor and not your program:
-#define SYS_MAINTENANCE 0
-#define SYS_GROUP 1
+#define SYS_GROUP 0
+#define NONE_1 1
 #define NONE_2 2
 #define NONE_3 3
 #define SYS_ACTION 4
@@ -34,3 +34,6 @@
 #define FIRMWARE_VERSION "0.0.4"
 #define FIRMWARE_TYPE "PIR"
 #define BOARD_NAME "nodemcuv2"
+
+#define WIFI_AP_SSID "EPS8266"
+#define WIFI_AP_PASS "12345678"
