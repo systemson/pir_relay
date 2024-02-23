@@ -10,6 +10,7 @@
 #include "defines.h"
 #include "homepage.h"
 #include "EEPROMAnything.h"
+#include <TypeConversionFunctions.h>
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
@@ -142,8 +143,8 @@ JSONVar buildHeartbeat(const boolean &IsOnline = true)
 {
   JSONVar json;
 
-  json["mac_address"] = getEnv(MAC_ADDRESS);
-  json["ip_address"] = getEnv(IP_ADDRESS);
+  json["mac_address"] = WiFi.macAddress();
+  json["ip_address"] = WiFi.localIP().toString();
   json["group_name"] = getEnv(SYS_GROUP);
   json["is_online"] = IsOnline;
   json["running_since"] = millis();
@@ -158,7 +159,7 @@ void registerComponent(String type, String description)
 {
   JSONVar json;
 
-  json["mac_address"] = getEnv(MAC_ADDRESS);
+  json["mac_address"] = WiFi.macAddress();
   json["component_name"] = type;
   json["description"] = description;
 
@@ -172,7 +173,7 @@ void sendReading(String type, String description, String value, String status)
 {
   JSONVar json;
 
-  json["mac_address"] = getEnv(MAC_ADDRESS);
+  json["mac_address"] = WiFi.macAddress();
   json["component_name"] = type;
   json["description"] = description;
   json["value"] = value;
@@ -184,6 +185,9 @@ void sendReading(String type, String description, String value, String status)
   mqttClient.endMessage();
 }
 
+/**
+ * Sends the board heartbeat to system.
+ */
 void sendHeartBeat()
 {
   // send message, the Print interface can be used to set the message contents
@@ -194,48 +198,76 @@ void sendHeartBeat()
 
 void hardReset()
 {
+  Serial.println(F("Restoring factory defaults."));
+
+  const String group = "dpena";
+  const String macAddress = WiFi.macAddress();
+
   // setEnv(SYS_MAINTENANCE, "FALSE");
-  setEnv(SYS_GROUP, "dpena");
+  setEnv(SYS_GROUP, group);
   setEnv(SYS_ACTION, "FREE");
   setEnv(SYS_HARD_RESET, "FALSE");
+  setEnv(HEARTBEAT_TIME, "10000");
 
-  // setEnv(WIFI_SSID, "Amilcar2.4G");
-  // setEnv(WIFI_PASS, "Gigi.2022");
-
-  setEnv(WIFI_SSID, "Deivi");
-  setEnv(WIFI_PASS, "Amilcar.1");
-  setEnv(MAC_ADDRESS, WiFi.macAddress());
-
-  // setEnv(MQTT_BROKER, "192.168.1.11");
+  setEnv(WIFI_SSID, "DPENA");
+  setEnv(WIFI_PASS, "12345678");
   setEnv(MQTT_BROKER, "192.168.15.42");
   setEnv(MQTT_PORT, "1883");
   setEnv(MQTT_PUB_TOPIC, "arduino/heartbeat");
-  setEnv(MQTT_SUB_TOPIC, "arduino/" + getEnv(SYS_GROUP) + "/" + getEnv(MAC_ADDRESS) + "/inbox");
-  setEnv(MQTT_CONF_TOPIC, "arduino/" + getEnv(SYS_GROUP) + "/" + getEnv(MAC_ADDRESS) + "/outbox");
+  setEnv(MQTT_SUB_TOPIC, "arduino/" + group + "/" + macAddress + "/inbox");
+  setEnv(MQTT_CONF_TOPIC, "arduino/" + group + "/" + macAddress + "/outbox");
   setEnv(MQTT_REG_TOPIC, "arduino/component/register");
   setEnv(MQTT_READ_TOPIC, "arduino/component/reading");
-
-  setEnv(LOOP_TIME, "1000");
 
   persistEnv();
 }
 
-boolean connectWiFi(boolean accessPoint = false)
+void onStationConnected(const WiFiEventSoftAPModeStationConnected &evt)
+{
+  Serial.println();
+  Serial.print("Station connected: ");
+  Serial.println(macToString(evt.mac));
+}
+
+void onStationDisconnected(const WiFiEventSoftAPModeStationDisconnected &evt)
+{
+  Serial.println();
+  Serial.print("Station disconnected: ");
+  Serial.println(macToString(evt.mac));
+}
+
+WiFiEventHandler stationConnectedHandler;
+WiFiEventHandler stationDisconnectedHandler;
+// WiFiEventHandler probeRequestPrintHandler;
+// WiFiEventHandler probeRequestBlinkHandler;
+void connectWiFi()
 {
   WiFi.mode(WIFI_AP_STA);
 
   // Start Access Point
-  WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
+  // WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
   Serial.print(F("Access Point name: "));
-  Serial.println(WIFI_AP_SSID);
+  Serial.println(WiFi.softAPSSID());
 
   // Print the Access Point IP address
   const String apIP = WiFi.softAPIP().toString();
   Serial.print(F("Access Point IP address: "));
   Serial.println(apIP);
 
+  // Register event handlers.
+  // Callback functions will be called as long as these handler objects exist.
+  // Call "onStationConnected" each time a station connects
+  stationConnectedHandler = WiFi.onSoftAPModeStationConnected(&onStationConnected);
+  // Call "onStationDisconnected" each time a station disconnects
+  stationDisconnectedHandler = WiFi.onSoftAPModeStationDisconnected(&onStationDisconnected);
+
   // Connect to WiFi
   WiFi.begin(getEnv(WIFI_SSID), getEnv(WIFI_PASS));
+
+  // print a new line, then print WiFi connected and the IP address
+  Serial.println();
+  Serial.print(F("WiFi connection to: "));
+  Serial.println(getEnv(WIFI_SSID).c_str());
 
   // while wifi not connected yet, print '.'
   // then after it connected, get out of the loop
@@ -257,12 +289,22 @@ boolean connectWiFi(boolean accessPoint = false)
   const String localIP = WiFi.localIP().toString();
   Serial.print(F("Local IP address: "));
   Serial.println(localIP);
-  setEnv(IP_ADDRESS, localIP);
 
   // print("Connection RSSI: ");
   // println(WiFi.RSSI().toString());
+}
 
-  return accessPoint;
+boolean reconnectMqtt()
+{
+  if (!mqttClient.connect(getEnv(MQTT_BROKER).c_str(), getEnv(MQTT_PORT).toInt()))
+  {
+    print("MQTT connection failed! Error code = ");
+    println(mqttClient.connectError());
+
+    return false;
+  }
+
+  return true;
 }
 
 void connectMqtt()
@@ -287,12 +329,9 @@ void connectMqtt()
   Serial.print(F(":"));
   Serial.println(getEnv(MQTT_PORT));
 
-  if (!mqttClient.connect(getEnv(MQTT_BROKER).c_str(), getEnv(MQTT_PORT).toInt()))
+  while (!reconnectMqtt())
   {
-    Serial.print(F("MQTT connection failed! Error code = "));
-    Serial.println(mqttClient.connectError());
-    delay(3000);
-    ESP.restart();
+    delay(1000 * 60);
   }
 
   Serial.println(F("You're connected to the MQTT broker!"));
@@ -360,15 +399,18 @@ void setConfigRoute(AsyncWebServerRequest *request)
 
   request->send(200, "application/json", JSON.stringify(response));
 }
-void reboot(AsyncWebServerRequest *request)
+void hardResetRoute(AsyncWebServerRequest *request)
 {
-
+  hardReset();
+  delay(3000);
+  ESP.restart();
+}
+void rebootRoute(AsyncWebServerRequest *request)
+{
   EEPROM_clear();
   persistEnv();
   delay(3000);
   ESP.restart();
-
-  request->send(200, "text/plain", "REBOOTING");
 }
 void setRoutes()
 {
@@ -381,10 +423,14 @@ void setRoutes()
   server.on("/config", HTTP_POST, setConfigRoute);
   server.on("/", HTTP_GET, homeRoute);
   server.on("/info", HTTP_GET, infoRoute);
-  server.on("/reboot", HTTP_GET, reboot);
+  server.on("/reboot", HTTP_POST, rebootRoute);
+  server.on("/hardreset", HTTP_POST, hardResetRoute);
 
   server.begin();
 }
+/**
+ * Prepares de applications services.
+ */
 void boot()
 {
   Serial.println();
@@ -392,13 +438,11 @@ void boot()
   Serial.print(F(BOARD_NAME));
   Serial.print(F(" | "));
   Serial.println(F(FIRMWARE_VERSION));
-  Serial.println();
 
   loadEnv();
 
   if (getEnv(SYS_HARD_RESET) != "FALSE")
   {
-    Serial.println(F("Restoring factory defaults."));
     hardReset();
   }
 
@@ -437,13 +481,13 @@ void tryUpdate()
 
   case HTTP_UPDATE_NO_UPDATES:
     Serial.println(F("Your code is up to date!"));
-    delay(LOOP_TIME);
+    delay(3000);
     setEnv(SYS_ACTION, "FREE");
     break;
 
   case HTTP_UPDATE_OK:
     Serial.println(F("HTTP_UPDATE_OK"));
-    delay(LOOP_TIME); // Wait a second and restart
+    delay(3000); // Wait a second and restart
     setEnv(SYS_ACTION, "FREE");
     ESP.restart();
     break;
@@ -457,12 +501,7 @@ void loopHeartBeat()
   {
     setEnv(SYS_ACTION, "FREE");
 
-    if (!mqttClient.connect(getEnv(MQTT_BROKER).c_str(), getEnv(MQTT_PORT).toInt()))
-    {
-      print("MQTT connection failed! Error code = ");
-      println(mqttClient.connectError());
-    }
-    else
+    if (reconnectMqtt())
     {
       // subscribe to a topic
       mqttClient.subscribe(getEnv(MQTT_SUB_TOPIC));
@@ -483,8 +522,14 @@ void loopHeartBeat()
   sendHeartBeat();
 }
 
+// Store milis for each loop
 unsigned long noDelayCounter[3] = {};
 
+/**
+ * @param loopNum Index of the loop (max 3).
+ * @param loopTime Time to way until next excecution.
+ * @param callback Callback function to run on every loop.
+ */
 void noDelayLoop(int loopNum, unsigned long loopTime, void (*callback)(void))
 {
   if (!noDelayCounter[loopNum])

@@ -22,8 +22,6 @@ void setup()
 
 void loop()
 {
-  const int loopTime = getEnv(LOOP_TIME).toInt();
-
-  noDelayLoop(0, loopTime, &mainLoop);
-  noDelayLoop(1, loopTime * 10, &loopHeartBeat);
+  noDelayLoop(0, 1000, &mainLoop);
+  noDelayLoop(1, getEnv(HEARTBEAT_TIME).toInt(), &loopHeartBeat);
 }

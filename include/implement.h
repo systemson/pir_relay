@@ -6,7 +6,7 @@ int current = 0;
 
 void mainLoop()
 {
-  const int loopTime = getEnv(LOOP_TIME).toInt();
+  const int loopTime = 1000;
   const String sysAction = getEnv(SYS_ACTION);
 
   // if (sysAction == "WAIT")
@@ -53,5 +53,5 @@ void turnOff()
 {
   setEnv(SYS_ACTION, "FREE");
   digitalWrite(D6, LOW);
-  delay(getEnv(LOOP_TIME).toInt());
+  delay(3000);
 }
