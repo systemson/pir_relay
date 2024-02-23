@@ -31,7 +31,7 @@
 
 #define CONFIG_SIZE 25
 
-#define FIRMWARE_VERSION "0.0.4"
+#define FIRMWARE_VERSION "0.0.5"
 #define FIRMWARE_TYPE "PIR"
 #define BOARD_NAME "nodemcuv2"
 
