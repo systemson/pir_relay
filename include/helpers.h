@@ -6,8 +6,10 @@
 #include <ESPAsyncWebServer.h>
 #include <ESP8266httpUpdate.h>
 #include <WebSerial.h>
+#include <EEPROM.h>
 #include "defines.h"
 #include "homepage.h"
+#include "EEPROMAnything.h"
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
@@ -17,6 +19,20 @@ String CONFIG[CONFIG_SIZE];
 
 void turnOff();
 
+void loadEnv()
+{
+  EEPROM.begin(EEPROM_SIZE);
+
+  const char *value = EEPROM_read();
+
+  JSONVar json = JSON.parse(value);
+
+  for (size_t i = 0; i < CONFIG_SIZE; i++)
+  {
+    CONFIG[i] = String(json[i]);
+  }
+}
+
 void setEnv(const int &key, const String &value)
 {
   CONFIG[key] = value;
@@ -25,6 +41,23 @@ void setEnv(const int &key, const String &value)
 String getEnv(const int &key)
 {
   return CONFIG[key];
+}
+
+void persistEnv()
+{
+  EEPROM_clear();
+
+  JSONVar json;
+
+  for (size_t i = 0; i < CONFIG_SIZE; i++)
+  {
+    json[i] = CONFIG[i];
+  }
+
+  const char *memory = JSON.stringify(json).c_str();
+
+  EEPROM_write(memory);
+  EEPROM.commit();
 }
 
 void print(String msg)
@@ -158,6 +191,7 @@ void sendHeartBeat()
   mqttClient.print(JSON.stringify(buildHeartbeat()));
   mqttClient.endMessage();
 }
+
 void hardReset()
 {
   // setEnv(SYS_MAINTENANCE, "FALSE");
@@ -182,6 +216,8 @@ void hardReset()
   setEnv(MQTT_READ_TOPIC, "arduino/component/reading");
 
   setEnv(LOOP_TIME, "1000");
+
+  persistEnv();
 }
 
 boolean connectWiFi(boolean accessPoint = false)
@@ -290,7 +326,7 @@ void getConfigRoute(AsyncWebServerRequest *request)
 {
   if (!request->hasParam("key"))
   {
-    return request->send(422, "application/json", "{\"message\": \"Invalid request\"}");
+    return request->send(422, "application/json", EEPROM_read());
   }
 
   AsyncWebParameter *key = request->getParam("key");
@@ -324,26 +360,16 @@ void setConfigRoute(AsyncWebServerRequest *request)
 
   request->send(200, "application/json", JSON.stringify(response));
 }
+void reboot(AsyncWebServerRequest *request)
+{
 
-const char index_html[] PROGMEM = R"rawliteral(
-    <!DOCTYPE HTML><html><head>
-      <title>ESP Input Form</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      </head><body>
-      <form action="/get">
-        input1: <input type="text" name="input1">
-        <input type="submit" value="Submit">
-      </form><br>
-      <form action="/get">
-        input2: <input type="text" name="input2">
-        <input type="submit" value="Submit">
-      </form><br>
-      <form action="/get">
-        input3: <input type="text" name="input3">
-        <input type="submit" value="Submit">
-      </form>
-    </body></html>)rawliteral";
+  EEPROM_clear();
+  persistEnv();
+  delay(3000);
+  ESP.restart();
 
+  request->send(200, "text/plain", "REBOOTING");
+}
 void setRoutes()
 {
   WebSerial.begin(&server);
@@ -355,6 +381,7 @@ void setRoutes()
   server.on("/config", HTTP_POST, setConfigRoute);
   server.on("/", HTTP_GET, homeRoute);
   server.on("/info", HTTP_GET, infoRoute);
+  server.on("/reboot", HTTP_GET, reboot);
 
   server.begin();
 }
@@ -366,6 +393,8 @@ void boot()
   Serial.print(F(" | "));
   Serial.println(F(FIRMWARE_VERSION));
   Serial.println();
+
+  loadEnv();
 
   if (getEnv(SYS_HARD_RESET) != "FALSE")
   {

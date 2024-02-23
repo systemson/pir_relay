@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <EEPROM.h>
 #include "helpers.h"
 #include "implement.h"
 
@@ -12,6 +13,7 @@ void setup()
   {
     // wait for serial port to connect. Needed for native USB port only
   }
+
   boot();
 
   sendHeartBeat();
