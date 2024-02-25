@@ -9,13 +9,6 @@ void mainLoop()
   const int loopTime = 1000;
   const String sysAction = getEnv(SYS_ACTION);
 
-  // if (sysAction == "WAIT")
-  // {
-  //   turnOff();
-  //   println("Maintenance Mode.");
-  //   tryUpdate();
-  // }
-  // else
   if (sysAction == "ON")
   {
     digitalWrite(D6, HIGH);

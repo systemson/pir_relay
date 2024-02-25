@@ -11,7 +11,7 @@ void setup()
 
   while (!Serial)
   {
-    // wait for serial port to connect. Needed for native USB port only
+    //
   }
 
   boot();
@@ -22,6 +22,12 @@ void setup()
 
 void loop()
 {
+  while (getEnv(SYS_ACTION) == "WAIT")
+  {
+    Serial.println(F("Maintenance Mode."));
+    delay(1000);
+  }
+
   noDelayLoop(0, 1000, &mainLoop);
   noDelayLoop(1, getEnv(HEARTBEAT_TIME).toInt(), &loopHeartBeat);
 }

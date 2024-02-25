@@ -338,7 +338,7 @@ void connectMqtt()
 
   while (!reconnectMqtt())
   {
-    delay(1000 * 60);
+    delay(1000 * 10);
   }
 
   Serial.println(F("You're connected to the MQTT broker!"));
@@ -448,6 +448,8 @@ void boot()
 
   loadEnv();
 
+  Serial.println(JSON.stringify(buildHeartbeat(false)));
+
   if (getEnv(SYS_HARD_RESET) != "FALSE")
   {
     hardReset();
@@ -461,6 +463,8 @@ void boot()
 }
 void tryUpdate()
 {
+  setEnv(SYS_ACTION, "FREE");
+
   // The line below is optional. It can be used to blink the LED on the board during flashing
   // The LED will be on during download of one buffer of data from the network. The LED will
   // be off during writing that buffer to flash
@@ -483,19 +487,16 @@ void tryUpdate()
   {
   case HTTP_UPDATE_FAILED:
     Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-    setEnv(SYS_ACTION, "FREE");
     break;
 
   case HTTP_UPDATE_NO_UPDATES:
     Serial.println(F("Your code is up to date!"));
     delay(3000);
-    setEnv(SYS_ACTION, "FREE");
     break;
 
   case HTTP_UPDATE_OK:
     Serial.println(F("HTTP_UPDATE_OK"));
-    delay(3000); // Wait a second and restart
-    setEnv(SYS_ACTION, "FREE");
+    delay(3000);
     ESP.restart();
     break;
   }
@@ -503,7 +504,6 @@ void tryUpdate()
 
 void loopHeartBeat()
 {
-
   if (!mqttClient.connected())
   {
     setEnv(SYS_ACTION, "FREE");
@@ -515,9 +515,8 @@ void loopHeartBeat()
     }
   }
 
-  if (getEnv(SYS_ACTION) == "WAIT")
+  if (getEnv(SYS_ACTION) == "UPDT")
   {
-    println("Maintenance Mode.");
     turnOff();
     tryUpdate();
   }
